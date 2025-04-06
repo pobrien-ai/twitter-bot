@@ -2,6 +2,10 @@
 import { TwitterApi } from 'twitter-api-v2';
 import axios from 'axios';
 
+// Database functions for storing the last post time
+// Uses local variable in development and Edge Config in production
+let lastPostTimeLocal = null;
+
 // Configure Twitter API client
 const twitterClient = new TwitterApi({
   appKey: process.env.TWITTER_API_KEY,
@@ -12,38 +16,90 @@ const twitterClient = new TwitterApi({
 
 // Function to generate a funny tweet using Claude
 async function generateFunnyTweet() {
-  const prompt = "Write a funny, witty tweet that would make people laugh. Keep it under 280 characters.";
-  
-  try {
-    const response = await axios.post(
-      'https://api.anthropic.com/v1/messages',
+    // List of AI pioneers with their brief descriptions
+    const pioneers = [
       {
-        model: "claude-3-5-sonnet-20240229",
-        max_tokens: 150,
-        temperature: 0.8,
-        system: "You are an expert comedy writer known for clever, witty tweets that go viral.",
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
+        name: "Elon Musk",
+        description: "Founder of xAI, known for bold, provocative statements about AI's future and Mars colonization."
       },
       {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01'
-        }
+        name: "Sam Altman",
+        description: "OpenAI CEO, known for his thoughtful but optimistic perspectives on AI's potential and risks."
+      },
+      {
+        name: "Dario Amodei",
+        description: "Anthropic CEO, known for his focus on AI safety and responsible development of AI systems."
+      },
+      {
+        name: "Alan Turing",
+        description: "Father of theoretical computer science and AI, known for his brilliant, philosophical approach."
+      },
+      {
+        name: "Marvin Minsky",
+        description: "AI pioneer, co-founder of MIT's AI lab, known for his strong opinions and bold predictions."
+      },
+      {
+        name: "Demis Hassabis",
+        description: "DeepMind CEO, known for his passion for combining neuroscience and AI."
+      },
+      {
+        name: "Fei-Fei Li",
+        description: "Computer vision pioneer, known for her advocacy for human-centered AI and diversity in the field."
+      },
+      {
+        name: "Yann LeCun",
+        description: "Deep learning pioneer, known for his technical expertise and occasional social media debates."
+      },
+      {
+        name: "Geoffrey Hinton",
+        description: "Godfather of deep learning, known for his breakthrough work on neural networks and recent AI warnings."
+      },
+      {
+        name: "John McCarthy",
+        description: "The person who coined the term 'artificial intelligence', known for his logical, theoretical approach."
       }
-    );
+    ];
     
-    return response.data.content[0].text.trim();
-  } catch (error) {
-    console.error('Error generating tweet with Claude:', error.response?.data || error.message);
-    throw error;
+    // Randomly select a pioneer
+    const pioneer = pioneers[Math.floor(Math.random() * pioneers.length)];
+    
+    // Create a prompt for Claude that includes the pioneer's identity
+    const prompt = `Write a funny, witty tweet (under 280 characters) as if it was written by ${pioneer.name}, ${pioneer.description} The tweet should be humorous and relate to AI, technology, or the future in a way that reflects their personality and viewpoints.`;
+    
+    try {
+      const response = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: "claude-3-haiku-20240307",
+          max_tokens: 150,
+          temperature: 0.8,
+          system: "You are an expert comedy writer who can perfectly mimic the tone, style, and perspectives of different tech personalities.",
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ]
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.CLAUDE_API_KEY,
+            'anthropic-version': '2023-06-01'
+          }
+        }
+      );
+      
+      // Get the generated tweet text
+      const tweetText = response.data.content[0].text.trim();
+      
+      // Format the final tweet with attribution
+      return `${tweetText}\n\n- ${pioneer.name} (AI Parody)`;
+    } catch (error) {
+      console.error('Error generating tweet with Claude:', error.response?.data || error.message);
+      throw error;
+    }
   }
-}
 
 // Function to post a tweet
 async function postTweet(text) {
@@ -74,24 +130,44 @@ function shouldPost(lastPostTime) {
 // Import the Edge Config database
 import { get, set } from '@vercel/edge-config';
 
-// Function to get the last post time from database
+
+// Function to get the last post time
 async function getLastPostTime() {
-    try {
-      return await get('lastPostTime');
-    } catch (error) {
-      console.error('Error fetching last post time:', error);
-      return null;
+    // Check if we're in Vercel production or local development
+    if (process.env.VERCEL) {
+      // In Vercel, use Edge Config (only import this in production)
+      try {
+        const { createClient } = await import('@vercel/edge-config');
+        const edgeConfig = createClient(process.env.EDGE_CONFIG);
+        return await edgeConfig.get('lastPostTime');
+      } catch (error) {
+        console.error('Error fetching last post time:', error);
+        return null;
+      }
+    } else {
+      // In local development, use memory variable
+      return lastPostTimeLocal;
     }
   }
 
-// Function to update the last post time in database
+// Function to update the last post time
 async function updateLastPostTime(timeString) {
-    try {
-      await set('lastPostTime', timeString);
+    // Check if we're in Vercel production or local development
+    if (process.env.VERCEL) {
+      // In Vercel, use Edge Config
+      try {
+        const { createClient } = await import('@vercel/edge-config');
+        const edgeConfig = createClient(process.env.EDGE_CONFIG);
+        await edgeConfig.set('lastPostTime', timeString);
+        return true;
+      } catch (error) {
+        console.error('Error updating last post time:', error);
+        return false;
+      }
+    } else {
+      // In local development, use memory variable
+      lastPostTimeLocal = timeString;
       return true;
-    } catch (error) {
-      console.error('Error updating last post time:', error);
-      return false;
     }
   }
 
@@ -123,4 +199,8 @@ export default async function handler(req, res) {
   
   // Handle manual invocations or API checks
   return res.status(200).json({ status: 'Bot is active' });
+
+  
 }
+export { generateFunnyTweet, postTweet };
+
