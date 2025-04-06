@@ -197,10 +197,38 @@ export default async function handler(req, res) {
     }
   }
   
+  // NEW CODE: Add test endpoint
+  if (req.query.test === 'true') {
+    try {
+      console.log("Test endpoint triggered");
+      
+      // Generate and post a tweet
+      const tweetText = await generateFunnyTweet();
+      console.log("Generated tweet:", tweetText);
+      
+      const result = await postTweet(tweetText);
+      
+      // Update the last post time
+      await updateLastPostTime(new Date().toISOString());
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Test tweet posted successfully', 
+        tweet: tweetText 
+      });
+    } catch (error) {
+      console.error('Error in test endpoint:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  }
+  
   // Handle manual invocations or API checks
   return res.status(200).json({ status: 'Bot is active' });
-
-  
 }
+  
+
 export { generateFunnyTweet, postTweet };
 
