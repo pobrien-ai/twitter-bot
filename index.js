@@ -128,7 +128,7 @@ function shouldPost(lastPostTime) {
 }
 
 // Import the Edge Config database
-import { get, set } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 
 // Function to get the last post time
